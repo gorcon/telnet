@@ -64,7 +64,8 @@ import (
 )
 
 func main() {
-	if err := telnet.DialInteractive(os.Stdin, os.Stdout, "172.19.0.2:8081", "banana"); err != nil {
+	err := telnet.DialInteractive(os.Stdin, os.Stdout, "172.19.0.2:8081", "")
+	if err != nil {
 		log.Println(err)
 	}
 }

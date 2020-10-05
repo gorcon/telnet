@@ -97,7 +97,8 @@ func Dial(address string, password string, options ...Option) (*Conn, error) {
 }
 
 // DialInteractive parses commands from input reader, executes them on remote
-// server and writes responses to output writer.
+// server and writes responses to output writer. Password can be empty string.
+// In this case password will be prompted in an interactive window.
 func DialInteractive(r io.Reader, w io.Writer, address string, password string, options ...Option) error {
 	settings := DefaultSettings
 
