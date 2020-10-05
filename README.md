@@ -36,7 +36,7 @@ import (
 )
 
 func main() {
-	conn, err := telnet.Dial("172.19.0.2:8081", "banana"))
+	conn, err := telnet.Dial("172.19.0.2:8081", "banana")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func main() {
 
 ## Requirements
 
-Go 1.13 or higher
+Go 1.15 or higher
 
 ## Contribute
 

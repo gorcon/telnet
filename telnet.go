@@ -63,8 +63,7 @@ type Conn struct {
 	settings Settings
 	reader   io.Reader
 	writer   io.Writer
-
-	w bytes.Buffer
+	buffer   bytes.Buffer
 }
 
 // Dial creates a new authorized TELNET connection.
@@ -83,8 +82,7 @@ func Dial(address string, password string, options ...Option) (*Conn, error) {
 
 	client := Conn{conn: conn, settings: settings, reader: conn, writer: conn}
 
-	// TODO: Graceful close.
-	go client.processReadResponse(&client.w)
+	go client.processReadResponse(&client.buffer)
 
 	if err := client.auth(password); err != nil {
 		// Failed to auth conn with the server.
@@ -122,10 +120,9 @@ func DialInteractive(r io.Reader, w io.Writer, address string, password string, 
 		}
 	}
 
-	// TODO: Graceful close.
 	go client.processReadResponse(w)
 
-	return client.interactive(r, w)
+	return client.interactive(r)
 }
 
 // Execute sends command string to execute to the remote TELNET server.
@@ -139,7 +136,7 @@ func (c *Conn) Execute(command string) (string, error) {
 
 	time.Sleep(ReceiveWaitPeriod)
 
-	return c.w.String(), err
+	return c.buffer.String(), err
 }
 
 // LocalAddr returns the local network address.
@@ -187,12 +184,12 @@ func (c *Conn) execute(command string) (string, error) {
 
 	time.Sleep(ExecuteTickTimeout)
 
-	return c.w.String(), nil
+	return c.buffer.String(), nil
 }
 
 // interactive reads commands from reader in terminal mode and sends them
 // to execute to the remote TELNET server.
-func (c *Conn) interactive(r io.Reader, w io.Writer) error {
+func (c *Conn) interactive(r io.Reader) error {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		command := scanner.Text()
@@ -228,8 +225,7 @@ func (c *Conn) read(p []byte) (n int, err error) {
 // processReadResponse reads response data from TELNET connection
 // and writes them to writer (Stdout).
 func (c *Conn) processReadResponse(writer io.Writer) {
-	var buffer [1]byte
-	p := buffer[:]
+	p := make([]byte, 1)
 
 	for {
 		// Read 1 byte.
