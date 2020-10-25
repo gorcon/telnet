@@ -1,5 +1,5 @@
 # telnet
-
+[![golangci-lint](https://github.com/gorcon/telnet/workflows/golangci-lint/badge.svg)](https://github.com/gorcon/telnet/actions)
 [![Go Report Card](https://goreportcard.com/badge/github.com/gorcon/telnet)](https://goreportcard.com/report/github.com/gorcon/telnet)
 [![Build Status](https://travis-ci.org/gorcon/telnet.svg?branch=master)](https://travis-ci.org/gorcon/telnet)
 [![Coverage](https://gocover.io/_badge/github.com/gorcon/telnet?0 "coverage")](https://gocover.io/github.com/gorcon/telnet)
@@ -36,7 +36,7 @@ import (
 )
 
 func main() {
-	conn, err := telnet.Dial("172.19.0.2:8081", "banana")
+	conn, err := telnet.Dial("127.0.0.1:8081", "password")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -64,7 +64,7 @@ import (
 )
 
 func main() {
-	err := telnet.DialInteractive(os.Stdin, os.Stdout, "172.19.0.2:8081", "")
+	err := telnet.DialInteractive(os.Stdin, os.Stdout, "127.0.0.1:8081", "")
 	if err != nil {
 		log.Println(err)
 	}
