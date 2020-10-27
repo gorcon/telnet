@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
-	"time"
 )
 
 func TestDial(t *testing.T) {
