@@ -1,8 +1,7 @@
-# telnet
-[![golangci-lint](https://github.com/gorcon/telnet/workflows/golangci-lint/badge.svg)](https://github.com/gorcon/telnet/actions)
-[![Go Report Card](https://goreportcard.com/badge/github.com/gorcon/telnet)](https://goreportcard.com/report/github.com/gorcon/telnet)
-[![Build Status](https://travis-ci.org/gorcon/telnet.svg?branch=master)](https://travis-ci.org/gorcon/telnet)
+# Telnet
+[![GitHub Build](https://github.com/gorcon/telnet/workflows/build/badge.svg)](https://github.com/gorcon/telnet/actions)
 [![Coverage](https://gocover.io/_badge/github.com/gorcon/telnet?0 "coverage")](https://gocover.io/github.com/gorcon/telnet)
+[![Go Report Card](https://goreportcard.com/badge/github.com/gorcon/telnet)](https://goreportcard.com/report/github.com/gorcon/telnet)
 [![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg)](https://godoc.org/github.com/gorcon/telnet)
 
 7 Days to Die remote access to game [Command Console](https://7daystodie.gamepedia.com/Command_Console). This is not full [TELNET](https://en.wikipedia.org/wiki/Telnet) protocol implementation.

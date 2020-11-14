@@ -1,14 +1,7 @@
 run:
   skip-dirs:
-    - test/testdata_etc
-    - pkg/golinters/goanalysis/(checker|passes)
-    - data/
-    - .vscode/
-    - .directory/
-    - debug/
     - vendor/
   skip-files:
-    - Gopkg.lock
     - .gitignore
     - ".*_test.go$"
 
@@ -132,10 +125,3 @@ linters:
 issues:
   exclude:
     - "`DefaultSettings` is a global variable" # (gochecknoglobals)
-
-# golangci.com configuration
-# https://github.com/golangci/golangci/wiki/Configuration
-service:
-  golangci-lint-version: 1.31.x # use the fixed version to not introduce new linters unexpectedly
-  prepare:
-    - echo "here I can run custom commands, but no preparation needed for this repo"
