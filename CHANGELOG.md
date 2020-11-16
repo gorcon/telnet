@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
 - More tests.
 - Added the ability to remove part of the constantly repeated data from the response #1
 
-## Fixed
+### Fixed
 - Fixed error `write tcp 172.22.0.1:55036->172.22.0.2:8081: write: broken pipe` for multiple requests in one 
 connection session #2
 
