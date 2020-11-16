@@ -27,6 +27,9 @@ const ForcedExitCommand = ":q"
 // CRLF moves the cursor to the next line and then moves it to the beginning.
 const CRLF = "\r\n"
 
+// NullString is a null byte in string format.
+const NullString = "\x00"
+
 // ReceiveWaitPeriod is a delay to receive data from the server.
 const ReceiveWaitPeriod = 3 * time.Millisecond
 
@@ -35,15 +38,26 @@ const ExecuteTickTimeout = 1 * time.Second
 
 // Remote server response messages.
 const (
-	AuthSuccess           = "Logon successful."
-	AuthIncorrectPassword = "Password incorrect, please enter password:"
-	AuthTooManyFails      = "Too many failed login attempts!"
+	ResponseEnterPassword         = "Please enter password"
+	ResponseAuthSuccess           = "Logon successful."
+	ResponseAuthIncorrectPassword = "Password incorrect, please enter password:"
+	ResponseAuthTooManyFails      = "Too many failed login attempts!"
+	ResponseWelcome               = "Press 'help' to get a list of all commands. Press 'exit' to end session."
+
+	// ResponseINFLayout is the template for the logline about the command
+	// received by the server.
+	ResponseINFLayout = "INF Executing command '%s' by Telnet from %s"
 )
 
 var (
 	// ErrAuthFailed is returned when 7 Days to Die server rejected
 	// sent password.
 	ErrAuthFailed = errors.New("authentication failed")
+
+	// ErrAuthUnexpectedMessage is returned when 7 Days to Die server responses
+	// without ResponseAuthSuccess or ResponseAuthIncorrectPassword
+	// on auth request.
+	ErrAuthUnexpectedMessage = errors.New("unexpected authentication response")
 
 	// ErrCommandTooLong is returned when executed command length is bigger
 	// than MaxCommandLen characters.
@@ -63,7 +77,8 @@ type Conn struct {
 	settings Settings
 	reader   io.Reader
 	writer   io.Writer
-	buffer   bytes.Buffer
+	buffer   *bytes.Buffer
+	status   string
 }
 
 // Dial creates a new authorized TELNET connection.
@@ -80,9 +95,9 @@ func Dial(address string, password string, options ...Option) (*Conn, error) {
 		return nil, err
 	}
 
-	client := Conn{conn: conn, settings: settings, reader: conn, writer: conn}
+	client := Conn{conn: conn, settings: settings, reader: conn, writer: conn, buffer: new(bytes.Buffer)}
 
-	go client.processReadResponse(&client.buffer)
+	go client.processReadResponse(client.buffer)
 
 	if err := client.auth(password); err != nil {
 		// Failed to auth conn with the server.
@@ -133,11 +148,14 @@ func (c *Conn) Execute(command string) (string, error) {
 		return response, err
 	}
 
-	_, err = c.write([]byte(c.settings.exitCommand + CRLF))
+	if c.settings.clearResponse {
+		responseINFMessage := fmt.Sprintf(ResponseINFLayout+CRLF, command, c.LocalAddr().String())
+		if tmp := strings.Split(response, responseINFMessage); len(tmp) > 1 {
+			return tmp[1], err
+		}
+	}
 
-	time.Sleep(ReceiveWaitPeriod)
-
-	return c.buffer.String(), err
+	return response, err
 }
 
 // LocalAddr returns the local network address.
@@ -150,21 +168,40 @@ func (c *Conn) RemoteAddr() net.Addr {
 	return c.conn.RemoteAddr()
 }
 
+// Status returns server info status after auth request.
+func (c *Conn) Status() string {
+	return c.status
+}
+
 // Close closes the client connection.
 func (c *Conn) Close() error {
+	_, _ = c.write([]byte(c.settings.exitCommand + CRLF))
+
+	time.Sleep(ReceiveWaitPeriod)
+
 	return c.conn.Close()
 }
 
 // auth authenticates client for the next requests.
 func (c *Conn) auth(password string) error {
-	response, err := c.execute(password)
+	var err error
+
+	c.status, err = c.execute(password)
 	if err != nil {
 		return err
 	}
 
-	if !strings.Contains(response, AuthSuccess+CRLF) {
+	if strings.Contains(c.status, ResponseAuthIncorrectPassword) {
 		return ErrAuthFailed
 	}
+
+	if !strings.Contains(c.status, ResponseAuthSuccess) {
+		return ErrAuthUnexpectedMessage
+	}
+
+	c.status = strings.TrimPrefix(c.status, ResponseEnterPassword+CRLF+ResponseAuthSuccess)
+	c.status = strings.TrimSuffix(c.status, CRLF+CRLF+ResponseWelcome)
+	c.status = strings.TrimSpace(c.status)
 
 	return nil
 }
@@ -185,7 +222,13 @@ func (c *Conn) execute(command string) (string, error) {
 
 	time.Sleep(ExecuteTickTimeout)
 
-	return c.buffer.String(), nil
+	response := c.buffer.String()
+	*c.buffer = bytes.Buffer{}
+
+	response = strings.ReplaceAll(response, NullString, "")
+	response = strings.TrimSpace(response)
+
+	return response, nil
 }
 
 // interactive reads commands from reader in terminal mode and sends them
@@ -210,7 +253,7 @@ func (c *Conn) interactive(r io.Reader) error {
 
 	time.Sleep(ReceiveWaitPeriod)
 
-	return nil
+	return c.Close()
 }
 
 // write sends data to established TELNET connection.

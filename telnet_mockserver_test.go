@@ -16,6 +16,20 @@ const (
 	MockCommandHelpResponse = "lorem ipsum dolor sit amet"
 )
 
+const MockAuthSuccessWelcomeMessage = `*** Connected with 7DTD server.
+*** Server version: Alpha 18.4 (b4) Compatibility Version: Alpha 18.4
+*** Dedicated server only build
+
+Server IP:   127.0.0.1
+Server port: 26900
+Max players: 8
+Game mode:   GameModeSurvival
+World:       Navezgane
+Game name:   My Game
+Difficulty:  2
+
+Press 'help' to get a list of all commands. Press 'exit' to end session.`
+
 // MockServer is a mock Source TELNET protocol server.
 type MockServer struct {
 	addr        string
@@ -48,6 +62,15 @@ func NewMockServer() (*MockServer, error) {
 	return server, nil
 }
 
+func MustNewMockServer() *MockServer {
+	server, err := NewMockServer()
+	if err != nil {
+		panic(err)
+	}
+
+	return server
+}
+
 // Close shuts down the MockServer.
 func (s *MockServer) Close() error {
 	close(s.quit)
@@ -71,7 +94,23 @@ func (s *MockServer) Close() error {
 	}
 	s.mu.Unlock()
 
+	close(s.errors)
+
 	return err
+}
+
+func (s *MockServer) MustClose() {
+	if s == nil {
+		panic("server is not running")
+	}
+
+	if err := s.Close(); err != nil {
+		panic(err)
+	}
+
+	for err := range s.errors {
+		panic(err)
+	}
 }
 
 // Addr returns IPv4 string MockServer address.
@@ -138,6 +177,7 @@ func (s *MockServer) handle(conn net.Conn) {
 		switch request {
 		case "":
 		case MockCommandHelp:
+			w.WriteString(fmt.Sprintf("2020-11-14T23:09:20 31220.643 "+ResponseINFLayout, request, conn.RemoteAddr()) + CRLF)
 			w.WriteString(MockCommandHelpResponse + CRLF)
 		case "exit":
 		default:
@@ -189,7 +229,7 @@ func (s *MockServer) reportError(err error) bool {
 func (s *MockServer) auth(r *bufio.Reader, w *bufio.Writer) bool {
 	const limit = 10
 
-	w.WriteString("Please enter password:" + CRLF)
+	w.WriteString(ResponseEnterPassword + CRLF)
 	defer w.Flush()
 
 	for attempt := 1; attempt <= limit; attempt++ {
@@ -201,15 +241,19 @@ func (s *MockServer) auth(r *bufio.Reader, w *bufio.Writer) bool {
 
 		switch password {
 		case MockPassword:
-			w.WriteString(AuthSuccess + CRLF)
+			w.WriteString(ResponseAuthSuccess + CRLF + CRLF + CRLF + CRLF)
+			w.WriteString(MockAuthSuccessWelcomeMessage + CRLF + CRLF)
 			return true
+		case "unexpect":
+			w.WriteString("My spoon is too big" + CRLF + CRLF)
+			return false
 		default:
 			if attempt == limit {
-				w.WriteString(AuthTooManyFails + CRLF)
+				w.WriteString(ResponseAuthTooManyFails + CRLF)
 				return false
 			}
 
-			w.WriteString(AuthIncorrectPassword + CRLF)
+			w.WriteString(ResponseAuthIncorrectPassword + CRLF)
 		}
 	}
 

@@ -4,14 +4,16 @@ import "time"
 
 // Settings contains option to Conn.
 type Settings struct {
-	dialTimeout time.Duration
-	exitCommand string
+	dialTimeout   time.Duration
+	exitCommand   string
+	clearResponse bool
 }
 
 // DefaultSettings provides default deadline settings to Conn.
 var DefaultSettings = Settings{
-	dialTimeout: DefaultDialTimeout,
-	exitCommand: DefaultExitCommand,
+	dialTimeout:   DefaultDialTimeout,
+	exitCommand:   DefaultExitCommand,
+	clearResponse: false,
 }
 
 // Option allows to inject settings to Settings.
@@ -28,5 +30,12 @@ func SetDialTimeout(timeout time.Duration) Option {
 func SetExitCommand(command string) Option {
 	return func(s *Settings) {
 		s.exitCommand = command
+	}
+}
+
+// SetClearResponse injects clearResponse option to telnet client.
+func SetClearResponse(clear bool) Option {
+	return func(s *Settings) {
+		s.clearResponse = clear
 	}
 }

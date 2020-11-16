@@ -2,7 +2,6 @@ package telnet
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -13,17 +12,8 @@ import (
 )
 
 func TestDial(t *testing.T) {
-	server, err := NewMockServer()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		assert.NoError(t, server.Close())
-		close(server.errors)
-		for err := range server.errors {
-			assert.NoError(t, err)
-		}
-	}()
+	server := MustNewMockServer()
+	defer server.MustClose()
 
 	t.Run("connection refused", func(t *testing.T) {
 		conn, err := Dial("127.0.0.2:12345", MockPassword)
@@ -35,13 +25,31 @@ func TestDial(t *testing.T) {
 		assert.EqualError(t, err, "dial tcp 127.0.0.2:12345: connect: connection refused")
 	})
 
+	t.Run("empty password", func(t *testing.T) {
+		conn, err := Dial(server.Addr(), "")
+		if !assert.Error(t, err) {
+			assert.NoError(t, conn.Close())
+		}
+
+		assert.EqualError(t, err, ErrCommandEmpty.Error())
+	})
+
 	t.Run("authentication failed", func(t *testing.T) {
 		conn, err := Dial(server.Addr(), "wrong")
 		if !assert.Error(t, err) {
 			assert.NoError(t, conn.Close())
 		}
 
-		assert.EqualError(t, err, "authentication failed")
+		assert.EqualError(t, err, ErrAuthFailed.Error())
+	})
+
+	t.Run("unexpected auth response", func(t *testing.T) {
+		conn, err := Dial(server.Addr(), "unexpect")
+		if !assert.Error(t, err) {
+			assert.NoError(t, conn.Close())
+		}
+
+		assert.EqualError(t, err, ErrAuthUnexpectedMessage.Error())
 	})
 
 	t.Run("auth success", func(t *testing.T) {
@@ -49,21 +57,14 @@ func TestDial(t *testing.T) {
 		if assert.NoError(t, err) {
 			assert.NoError(t, conn.Close())
 		}
+
+		assert.Equal(t, MockAuthSuccessWelcomeMessage, conn.Status())
 	})
 }
 
 func TestConn_Execute(t *testing.T) {
-	server, err := NewMockServer()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		assert.NoError(t, server.Close())
-		close(server.errors)
-		for err := range server.errors {
-			assert.NoError(t, err)
-		}
-	}()
+	server := MustNewMockServer()
+	defer server.MustClose()
 
 	t.Run("incorrect command", func(t *testing.T) {
 		conn, err := Dial(server.Addr(), MockPassword)
@@ -104,11 +105,11 @@ func TestConn_Execute(t *testing.T) {
 
 		result, err := conn.Execute("random")
 		assert.NoError(t, err)
-		assert.Equal(t, fmt.Sprintf("Please enter password:%s%s%s%s%s", CRLF, AuthSuccess, CRLF, "*** ERROR: unknown command 'random'", CRLF), result)
+		assert.Equal(t, "*** ERROR: unknown command 'random'", result)
 	})
 
 	t.Run("success help command", func(t *testing.T) {
-		conn, err := Dial(server.Addr(), MockPassword)
+		conn, err := Dial(server.Addr(), MockPassword, SetClearResponse(true))
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -118,7 +119,29 @@ func TestConn_Execute(t *testing.T) {
 
 		result, err := conn.Execute(MockCommandHelp)
 		assert.NoError(t, err)
-		assert.Equal(t, fmt.Sprintf("Please enter password:%s%s%s%s%s", CRLF, AuthSuccess, CRLF, MockCommandHelpResponse, CRLF), result)
+		assert.Equal(t, MockCommandHelpResponse, result)
+	})
+
+	t.Run("multiple commands", func(t *testing.T) {
+		conn, err := Dial(server.Addr(), MockPassword, SetClearResponse(true))
+		if !assert.NoError(t, err) {
+			return
+		}
+		defer func() {
+			assert.NoError(t, conn.Close())
+		}()
+
+		result, err := conn.Execute(MockCommandHelp)
+		assert.NoError(t, err)
+		assert.Equal(t, MockCommandHelpResponse, result)
+
+		result, err = conn.Execute("random")
+		assert.NoError(t, err)
+		assert.Equal(t, "*** ERROR: unknown command 'random'", result)
+
+		result, err = conn.Execute(MockCommandHelp)
+		assert.NoError(t, err)
+		assert.Equal(t, MockCommandHelpResponse, result)
 	})
 
 	if run := getVar("TEST_7DTD_SERVER", "false"); run == "true" {
@@ -126,7 +149,28 @@ func TestConn_Execute(t *testing.T) {
 		password := getVar("TEST_7DTD_SERVER_PASSWORD", "banana")
 
 		t.Run("7dtd server", func(t *testing.T) {
-			needle := `*** List of Commands ***
+			conn, err := Dial(addr, password, SetClearResponse(true))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				assert.NoError(t, conn.Close())
+			}()
+
+			needle := func() string {
+				n := `*** Generic Console Help ***
+To get further help on a specific topic or command type (without the brackets)
+    help <topic / command>
+
+Generic notation of command parameters:
+   <param name>              Required parameter
+   <entityId / player name>  Possible types of parameter values
+   [param name]              Optional parameter
+
+*** List of Help Topics ***
+None yet
+
+*** List of Commands ***
  admin => Manage user permission levels
  aiddebug => Toggles AIDirector debug output.
  audio => Watch audio stats
@@ -242,79 +286,77 @@ of your current perk levels in a CSV file next to it.
  xuireload => Access xui related functions such as reinitializing a window group, opening a window group
  zip => Control zipline settings`
 
-			needle = strings.Replace(needle, "\n", "\r\n", -1)
-			needle = strings.Replace(needle, "some generic info\r\n", "some generic info\n", -1)
-			needle = strings.Replace(needle, "Also stores a list\r\n", "Also stores a list\n", -1)
+				n = strings.Replace(n, "\n", "\r\n", -1)
+				n = strings.Replace(n, "some generic info\r\n", "some generic info\n", -1)
+				n = strings.Replace(n, "Also stores a list\r\n", "Also stores a list\n", -1)
 
-			conn, err := Dial(addr, password)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() {
-				assert.NoError(t, conn.Close())
+				return n
 			}()
-
 			result, err := conn.Execute("help")
 			assert.NoError(t, err)
+			assert.Equal(t, needle, result)
 
-			if !strings.Contains(result, needle) {
-				diff := struct {
-					R string
-					N string
-				}{R: result, N: needle}
+			needle = "*** ERROR: unknown command 'status'"
+			result, err = conn.Execute("status")
+			assert.NoError(t, err)
+			assert.Equal(t, needle, result)
 
-				js, _ := json.Marshal(diff)
-				fmt.Println(string(js))
-
-				t.Error("response is not contain needle string")
+			needle = "INF Chat (from '-non-player-', entity id '-1', to 'Global'): 'Server': 10"
+			result, err = conn.Execute("say 10")
+			assert.NoError(t, err)
+			if !strings.Contains(needle, needle) {
+				assert.Equal(t, needle, result)
 			}
 		})
 	}
 }
 
 func TestConn_Interactive(t *testing.T) {
-	server, err := NewMockServer()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		assert.NoError(t, server.Close())
-		close(server.errors)
-		for err := range server.errors {
-			assert.NoError(t, err)
-		}
-	}()
+	server := MustNewMockServer()
+	defer server.MustClose()
+
+	t.Run("connection refused", func(t *testing.T) {
+		r, w := bytes.Buffer{}, bytes.Buffer{}
+
+		err := DialInteractive(&r, &w, "127.0.0.2:12345", MockPassword)
+		assert.EqualError(t, err, "dial tcp 127.0.0.2:12345: connect: connection refused")
+	})
 
 	t.Run("unknown command", func(t *testing.T) {
-		var r bytes.Buffer
-		w := bytes.Buffer{}
+		needle := ResponseEnterPassword + CRLF +
+			ResponseAuthSuccess + CRLF + CRLF + CRLF + CRLF +
+			MockAuthSuccessWelcomeMessage + CRLF + CRLF +
+			"*** ERROR: unknown command 'random'" + CRLF
+
+		r, w := bytes.Buffer{}, bytes.Buffer{}
 
 		r.WriteString("random" + "\n")
 		r.WriteString(ForcedExitCommand + "\n")
 
 		err := DialInteractive(&r, &w, server.Addr(), MockPassword)
-		if !assert.NoError(t, err) {
-			return
-		}
-
 		assert.NoError(t, err)
-		assert.Equal(t, fmt.Sprintf("Please enter password:%s%s%s%s%s", CRLF, AuthSuccess, CRLF, "*** ERROR: unknown command 'random'", CRLF), w.String())
+		assert.Equal(t, needle, w.String())
 	})
 
 	t.Run("success help command", func(t *testing.T) {
-		var r bytes.Buffer
-		w := bytes.Buffer{}
+		// TODO: server.Addr() in needle must be client address.
+		// This is impossible to check in current TELNET implementation.
+		needle := ResponseEnterPassword + CRLF +
+			ResponseAuthSuccess + CRLF + CRLF + CRLF + CRLF +
+			MockAuthSuccessWelcomeMessage + CRLF + CRLF +
+			fmt.Sprintf("2020-11-14T23:09:20 31220.643 "+ResponseINFLayout, MockCommandHelp, server.Addr()) + CRLF +
+			MockCommandHelpResponse + CRLF
+
+		r, w := bytes.Buffer{}, bytes.Buffer{}
 
 		r.WriteString(MockCommandHelp + "\n")
 		r.WriteString(ForcedExitCommand + "\n")
 
 		err := DialInteractive(&r, &w, server.Addr(), MockPassword, SetExitCommand("exit"))
-		if !assert.NoError(t, err) {
-			return
-		}
-
 		assert.NoError(t, err)
-		assert.Equal(t, fmt.Sprintf("Please enter password:%s%s%s%s%s", CRLF, AuthSuccess, CRLF, MockCommandHelpResponse, CRLF), w.String())
+		if !strings.Contains(w.String(), MockCommandHelp) {
+			assert.Equal(t, needle, w.String())
+		}
 	})
 }
 

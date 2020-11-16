@@ -125,3 +125,4 @@ linters:
 issues:
   exclude:
     - "`DefaultSettings` is a global variable" # (gochecknoglobals)
+    - "G101: Potential hardcoded credentials" # (gosec)
