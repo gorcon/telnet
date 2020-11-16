@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [v1.0.1] - 2020-11-14
+## [v1.1.0] - 2020-11-15
 ### Added
 - More tests.
 - Added the ability to remove part of the constantly repeated data from the response #1
