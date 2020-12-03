@@ -1,4 +1,4 @@
-package telnet
+package telnet_test
 
 import (
 	"bytes"
@@ -8,15 +8,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorcon/telnet"
+	"github.com/gorcon/telnet/telnettest"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestDial(t *testing.T) {
-	server := MustNewMockServer()
-	defer server.MustClose()
+	server := telnettest.NewServer(telnettest.SetSettings(telnettest.Settings{Password: "password"}))
+	defer server.Close()
 
 	t.Run("connection refused", func(t *testing.T) {
-		conn, err := Dial("127.0.0.2:12345", MockPassword)
+		conn, err := telnet.Dial("127.0.0.2:12345", "password")
 		if !assert.Error(t, err) {
 			// Close connection if established.
 			assert.NoError(t, conn.Close())
@@ -26,76 +28,76 @@ func TestDial(t *testing.T) {
 	})
 
 	t.Run("empty password", func(t *testing.T) {
-		conn, err := Dial(server.Addr(), "")
+		conn, err := telnet.Dial(server.Addr(), "")
 		if !assert.Error(t, err) {
 			assert.NoError(t, conn.Close())
 		}
 
-		assert.EqualError(t, err, ErrCommandEmpty.Error())
+		assert.EqualError(t, err, telnet.ErrCommandEmpty.Error())
 	})
 
 	t.Run("authentication failed", func(t *testing.T) {
-		conn, err := Dial(server.Addr(), "wrong")
+		conn, err := telnet.Dial(server.Addr(), "wrong")
 		if !assert.Error(t, err) {
 			assert.NoError(t, conn.Close())
 		}
 
-		assert.EqualError(t, err, ErrAuthFailed.Error())
+		assert.EqualError(t, err, telnet.ErrAuthFailed.Error())
 	})
 
 	t.Run("unexpected auth response", func(t *testing.T) {
-		conn, err := Dial(server.Addr(), "unexpect")
+		conn, err := telnet.Dial(server.Addr(), "unexpect")
 		if !assert.Error(t, err) {
 			assert.NoError(t, conn.Close())
 		}
 
-		assert.EqualError(t, err, ErrAuthUnexpectedMessage.Error())
+		assert.EqualError(t, err, telnet.ErrAuthUnexpectedMessage.Error())
 	})
 
 	t.Run("auth success", func(t *testing.T) {
-		conn, err := Dial(server.Addr(), MockPassword, SetDialTimeout(5*time.Second))
+		conn, err := telnet.Dial(server.Addr(), "password", telnet.SetDialTimeout(5*time.Second))
 		if assert.NoError(t, err) {
 			assert.NoError(t, conn.Close())
 		}
 
-		assert.Equal(t, MockAuthSuccessWelcomeMessage, conn.Status())
+		assert.Equal(t, telnettest.AuthSuccessWelcomeMessage, conn.Status())
 	})
 }
 
 func TestConn_Execute(t *testing.T) {
-	server := MustNewMockServer()
-	defer server.MustClose()
+	server := telnettest.NewServer(telnettest.SetSettings(telnettest.Settings{Password: "password"}))
+	defer server.Close()
 
 	t.Run("incorrect command", func(t *testing.T) {
-		conn, err := Dial(server.Addr(), MockPassword)
+		conn, err := telnet.Dial(server.Addr(), "password")
 		if !assert.NoError(t, err) {
 			return
 		}
 		defer assert.NoError(t, conn.Close())
 
 		result, err := conn.Execute("")
-		assert.Equal(t, err, ErrCommandEmpty)
+		assert.Equal(t, err, telnet.ErrCommandEmpty)
 		assert.Equal(t, 0, len(result))
 
 		result, err = conn.Execute(string(make([]byte, 1001)))
-		assert.Equal(t, err, ErrCommandTooLong)
+		assert.Equal(t, err, telnet.ErrCommandTooLong)
 		assert.Equal(t, 0, len(result))
 	})
 
 	t.Run("closed network connection", func(t *testing.T) {
-		conn, err := Dial(server.Addr(), MockPassword)
+		conn, err := telnet.Dial(server.Addr(), "password")
 		if !assert.NoError(t, err) {
 			return
 		}
 		assert.NoError(t, conn.Close())
 
-		result, err := conn.Execute(MockCommandHelp)
+		result, err := conn.Execute("help")
 		assert.EqualError(t, err, fmt.Sprintf("write tcp %s->%s: use of closed network connection", conn.LocalAddr(), conn.RemoteAddr()))
 		assert.Equal(t, 0, len(result))
 	})
 
 	t.Run("unknown command", func(t *testing.T) {
-		conn, err := Dial(server.Addr(), MockPassword)
+		conn, err := telnet.Dial(server.Addr(), "password")
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -109,7 +111,7 @@ func TestConn_Execute(t *testing.T) {
 	})
 
 	t.Run("success help command", func(t *testing.T) {
-		conn, err := Dial(server.Addr(), MockPassword, SetClearResponse(true))
+		conn, err := telnet.Dial(server.Addr(), "password", telnet.SetClearResponse(true))
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -117,13 +119,13 @@ func TestConn_Execute(t *testing.T) {
 			assert.NoError(t, conn.Close())
 		}()
 
-		result, err := conn.Execute(MockCommandHelp)
+		result, err := conn.Execute("help")
 		assert.NoError(t, err)
-		assert.Equal(t, MockCommandHelpResponse, result)
+		assert.Equal(t, "lorem ipsum dolor sit amet", result)
 	})
 
 	t.Run("multiple commands", func(t *testing.T) {
-		conn, err := Dial(server.Addr(), MockPassword, SetClearResponse(true))
+		conn, err := telnet.Dial(server.Addr(), "password", telnet.SetClearResponse(true))
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -131,17 +133,17 @@ func TestConn_Execute(t *testing.T) {
 			assert.NoError(t, conn.Close())
 		}()
 
-		result, err := conn.Execute(MockCommandHelp)
+		result, err := conn.Execute("help")
 		assert.NoError(t, err)
-		assert.Equal(t, MockCommandHelpResponse, result)
+		assert.Equal(t, "lorem ipsum dolor sit amet", result)
 
 		result, err = conn.Execute("random")
 		assert.NoError(t, err)
 		assert.Equal(t, "*** ERROR: unknown command 'random'", result)
 
-		result, err = conn.Execute(MockCommandHelp)
+		result, err = conn.Execute("help")
 		assert.NoError(t, err)
-		assert.Equal(t, MockCommandHelpResponse, result)
+		assert.Equal(t, "lorem ipsum dolor sit amet", result)
 	})
 
 	if run := getVar("TEST_7DTD_SERVER", "false"); run == "true" {
@@ -149,7 +151,7 @@ func TestConn_Execute(t *testing.T) {
 		password := getVar("TEST_7DTD_SERVER_PASSWORD", "banana")
 
 		t.Run("7dtd server", func(t *testing.T) {
-			conn, err := Dial(addr, password, SetClearResponse(true))
+			conn, err := telnet.Dial(addr, password, telnet.SetClearResponse(true))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -312,28 +314,28 @@ of your current perk levels in a CSV file next to it.
 }
 
 func TestConn_Interactive(t *testing.T) {
-	server := MustNewMockServer()
-	defer server.MustClose()
+	server := telnettest.NewServer(telnettest.SetSettings(telnettest.Settings{Password: "password"}))
+	defer server.Close()
 
 	t.Run("connection refused", func(t *testing.T) {
 		r, w := bytes.Buffer{}, bytes.Buffer{}
 
-		err := DialInteractive(&r, &w, "127.0.0.2:12345", MockPassword)
+		err := telnet.DialInteractive(&r, &w, "127.0.0.2:12345", "password")
 		assert.EqualError(t, err, "dial tcp 127.0.0.2:12345: connect: connection refused")
 	})
 
 	t.Run("unknown command", func(t *testing.T) {
-		needle := ResponseEnterPassword + CRLF +
-			ResponseAuthSuccess + CRLF + CRLF + CRLF + CRLF +
-			MockAuthSuccessWelcomeMessage + CRLF + CRLF +
-			"*** ERROR: unknown command 'random'" + CRLF
+		needle := telnet.ResponseEnterPassword + telnet.CRLF +
+			telnet.ResponseAuthSuccess + telnet.CRLF + telnet.CRLF + telnet.CRLF + telnet.CRLF +
+			telnettest.AuthSuccessWelcomeMessage + telnet.CRLF + telnet.CRLF +
+			"*** ERROR: unknown command 'random'" + telnet.CRLF
 
 		r, w := bytes.Buffer{}, bytes.Buffer{}
 
 		r.WriteString("random" + "\n")
-		r.WriteString(ForcedExitCommand + "\n")
+		r.WriteString(telnet.ForcedExitCommand + "\n")
 
-		err := DialInteractive(&r, &w, server.Addr(), MockPassword)
+		err := telnet.DialInteractive(&r, &w, server.Addr(), "password")
 		assert.NoError(t, err)
 		assert.Equal(t, needle, w.String())
 	})
@@ -341,20 +343,20 @@ func TestConn_Interactive(t *testing.T) {
 	t.Run("success help command", func(t *testing.T) {
 		// TODO: server.Addr() in needle must be client address.
 		// This is impossible to check in current TELNET implementation.
-		needle := ResponseEnterPassword + CRLF +
-			ResponseAuthSuccess + CRLF + CRLF + CRLF + CRLF +
-			MockAuthSuccessWelcomeMessage + CRLF + CRLF +
-			fmt.Sprintf("2020-11-14T23:09:20 31220.643 "+ResponseINFLayout, MockCommandHelp, server.Addr()) + CRLF +
-			MockCommandHelpResponse + CRLF
+		needle := telnet.ResponseEnterPassword + telnet.CRLF +
+			telnet.ResponseAuthSuccess + telnet.CRLF + telnet.CRLF + telnet.CRLF + telnet.CRLF +
+			telnettest.AuthSuccessWelcomeMessage + telnet.CRLF + telnet.CRLF +
+			fmt.Sprintf("2020-11-14T23:09:20 31220.643 "+telnet.ResponseINFLayout, "help", server.Addr()) + telnet.CRLF +
+			"lorem ipsum dolor sit amet" + telnet.CRLF
 
 		r, w := bytes.Buffer{}, bytes.Buffer{}
 
-		r.WriteString(MockCommandHelp + "\n")
-		r.WriteString(ForcedExitCommand + "\n")
+		r.WriteString("help" + "\n")
+		r.WriteString(telnet.ForcedExitCommand + "\n")
 
-		err := DialInteractive(&r, &w, server.Addr(), MockPassword, SetExitCommand("exit"))
+		err := telnet.DialInteractive(&r, &w, server.Addr(), "password", telnet.SetExitCommand("exit"))
 		assert.NoError(t, err)
-		if !strings.Contains(w.String(), MockCommandHelp) {
+		if !strings.Contains(w.String(), "help") {
 			assert.Equal(t, needle, w.String())
 		}
 	})
