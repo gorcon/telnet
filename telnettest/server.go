@@ -13,6 +13,7 @@ import (
 	"github.com/gorcon/telnet"
 )
 
+// AuthSuccessWelcomeMessage contains welcome TELNET Server message.
 const AuthSuccessWelcomeMessage = `*** Connected with 7DTD server.
 *** Server version: Alpha 18.4 (b4) Compatibility Version: Alpha 18.4
 *** Dedicated server only build
