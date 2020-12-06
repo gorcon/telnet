@@ -55,70 +55,21 @@ type HandlerFunc func(c *Context)
 
 // AuthHandler checks authorisation data and sets true if received password is valid.
 func AuthHandler(c *Context) {
-	const limit = 10
+	switch c.request {
+	case c.server.Settings.Password:
+		_, _ = c.writer.WriteString(telnet.ResponseAuthSuccess + telnet.CRLF + telnet.CRLF + telnet.CRLF + telnet.CRLF)
+		_, _ = c.writer.WriteString(AuthSuccessWelcomeMessage + telnet.CRLF + telnet.CRLF)
 
-	_, _ = c.writer.WriteString(telnet.ResponseEnterPassword + telnet.CRLF)
-	defer c.writer.Flush()
-
-	for attempt := 1; attempt < limit; attempt++ {
-		c.writer.Flush()
-
-		p := make([]byte, len([]byte(c.server.Settings.Password)))
-		_, _ = c.reader.Read(p)
-		password := string(p)
-
-		switch password {
-		case c.server.Settings.Password:
-			_, _ = c.writer.WriteString(telnet.ResponseAuthSuccess + telnet.CRLF + telnet.CRLF + telnet.CRLF + telnet.CRLF)
-			_, _ = c.writer.WriteString(AuthSuccessWelcomeMessage + telnet.CRLF + telnet.CRLF)
-
-			c.Auth = true
-
-			return
-		case "unexpect":
-			_, _ = c.writer.WriteString("My spoon is too big" + telnet.CRLF + telnet.CRLF)
-
-			return
-		default:
-			_, _ = c.writer.WriteString(telnet.ResponseAuthIncorrectPassword + telnet.CRLF)
-		}
+		c.Auth.Success = true
+		c.Auth.Break = true
+	default:
+		_, _ = c.writer.WriteString(telnet.ResponseAuthIncorrectPassword + telnet.CRLF)
 	}
-
-	_, _ = c.writer.WriteString(telnet.ResponseAuthTooManyFails + telnet.CRLF)
 }
 
 // EmptyHandler responses with empty body.
 func EmptyHandler(c *Context) {
-	scanner := bufio.NewScanner(c.reader)
-
-	for {
-		scanned := scanner.Scan()
-		if !scanned {
-			if err := scanner.Err(); err != nil {
-				if err != io.EOF {
-					panic(fmt.Errorf("handle read request error: %w", err))
-				}
-
-				return
-			}
-
-			break
-		}
-
-		request := scanner.Text()
-
-		switch request {
-		case "":
-		case "help":
-			_, _ = c.writer.WriteString(fmt.Sprintf("2020-11-14T23:09:20 31220.643 "+telnet.ResponseINFLayout, request, c.conn.RemoteAddr()) + telnet.CRLF) //nolint:lll // OMG
-			_, _ = c.writer.WriteString("lorem ipsum dolor sit amet" + telnet.CRLF)
-		case "exit":
-		default:
-			_, _ = c.writer.WriteString(fmt.Sprintf("*** ERROR: unknown command '%s'", request) + telnet.CRLF)
-		}
-
-		c.writer.Flush()
-	}
+	_, _ = c.writer.WriteString(fmt.Sprintf("*** ERROR: unknown command '%s'", c.request) + telnet.CRLF)
 }
 
 func newLocalListener() net.Listener {
@@ -250,16 +201,30 @@ func (s *Server) handle(conn net.Conn) {
 	}()
 
 	ctx := s.NewContext(conn)
-
-	defer ctx.writer.Flush()
-
-	s.authHandler(ctx)
-
-	if !ctx.Auth {
+	if !s.auth(ctx) {
 		return
 	}
 
-	s.commandHandler(ctx)
+	scanner := bufio.NewScanner(ctx.reader)
+
+	for {
+		scanned := scanner.Scan()
+		if !scanned {
+			if err := scanner.Err(); err != nil {
+				if err != io.EOF {
+					panic(fmt.Errorf("handle read request error: %w", err))
+				}
+
+				return
+			}
+
+			break
+		}
+
+		ctx.request = scanner.Text()
+
+		s.commandHandler(ctx)
+	}
 }
 
 // isRunning returns true if Server is running and false if is not.
@@ -282,4 +247,29 @@ func (s *Server) closeConn(conn net.Conn) {
 	}
 
 	delete(s.connections, conn)
+}
+
+func (s *Server) auth(ctx *Context) bool {
+	const limit = 10
+
+	_, _ = ctx.writer.WriteString(telnet.ResponseEnterPassword + telnet.CRLF)
+	defer ctx.writer.Flush()
+
+	for attempt := 1; attempt < limit; attempt++ {
+		ctx.writer.Flush()
+
+		p := make([]byte, len([]byte(ctx.server.Settings.Password)))
+		_, _ = ctx.reader.Read(p)
+		ctx.request = string(p)
+
+		s.authHandler(ctx)
+
+		if ctx.Auth.Break {
+			return ctx.Auth.Success
+		}
+	}
+
+	_, _ = ctx.writer.WriteString(telnet.ResponseAuthTooManyFails + telnet.CRLF)
+
+	return false
 }

@@ -13,8 +13,42 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func authHandler(c *telnettest.Context) {
+	switch c.Request() {
+	case c.Server().Settings.Password:
+		c.Writer().WriteString(telnet.ResponseAuthSuccess + telnet.CRLF + telnet.CRLF + telnet.CRLF + telnet.CRLF)
+		c.Writer().WriteString(telnettest.AuthSuccessWelcomeMessage + telnet.CRLF + telnet.CRLF)
+
+		c.Auth.Success = true
+		c.Auth.Break = true
+	case "unexpect":
+		c.Writer().WriteString("My spoon is too big" + telnet.CRLF + telnet.CRLF)
+
+		c.Auth.Success = false
+		c.Auth.Break = true
+	default:
+		c.Writer().WriteString(telnet.ResponseAuthIncorrectPassword + telnet.CRLF)
+	}
+}
+
+func commandHandler(c *telnettest.Context) {
+	switch c.Request() {
+	case "", "exit":
+	case "help":
+		c.Writer().WriteString(fmt.Sprintf("2020-11-14T23:09:20 31220.643 "+telnet.ResponseINFLayout, c.Request(), c.Conn().RemoteAddr()) + telnet.CRLF)
+		c.Writer().WriteString("lorem ipsum dolor sit amet" + telnet.CRLF)
+	default:
+		c.Writer().WriteString(fmt.Sprintf("*** ERROR: unknown command '%s'", c.Request()) + telnet.CRLF)
+	}
+
+	c.Writer().Flush()
+}
+
 func TestDial(t *testing.T) {
-	server := telnettest.NewServer(telnettest.SetSettings(telnettest.Settings{Password: "password"}))
+	server := telnettest.NewServer(
+		telnettest.SetSettings(telnettest.Settings{Password: "password"}),
+		telnettest.SetAuthHandler(authHandler),
+	)
 	defer server.Close()
 
 	t.Run("connection refused", func(t *testing.T) {
@@ -65,7 +99,11 @@ func TestDial(t *testing.T) {
 }
 
 func TestConn_Execute(t *testing.T) {
-	server := telnettest.NewServer(telnettest.SetSettings(telnettest.Settings{Password: "password"}))
+	server := telnettest.NewServer(
+		telnettest.SetSettings(telnettest.Settings{Password: "password"}),
+		telnettest.SetAuthHandler(authHandler),
+		telnettest.SetCommandHandler(commandHandler),
+	)
 	defer server.Close()
 
 	t.Run("incorrect command", func(t *testing.T) {
@@ -314,7 +352,11 @@ of your current perk levels in a CSV file next to it.
 }
 
 func TestConn_Interactive(t *testing.T) {
-	server := telnettest.NewServer(telnettest.SetSettings(telnettest.Settings{Password: "password"}))
+	server := telnettest.NewUnstartedServer()
+	server.Settings.Password = "password"
+	server.SetAuthHandler(authHandler)
+	server.SetCommandHandler(commandHandler)
+	server.Start()
 	defer server.Close()
 
 	t.Run("connection refused", func(t *testing.T) {

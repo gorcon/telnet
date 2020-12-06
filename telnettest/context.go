@@ -7,11 +7,15 @@ import (
 
 // Context represents the context of the current TELNET request.
 type Context struct {
-	server *Server
-	conn   net.Conn
-	reader *bufio.Reader
-	writer *bufio.Writer
-	Auth   bool
+	Auth struct {
+		Success bool
+		Break   bool
+	}
+	server  *Server
+	conn    net.Conn
+	reader  *bufio.Reader
+	writer  *bufio.Writer
+	request string
 }
 
 // Server returns the Server instance.
@@ -24,12 +28,17 @@ func (c *Context) Conn() net.Conn {
 	return c.conn
 }
 
-// Reader current TELNET Client connection Reader.
+// Reader returns current TELNET Client connection Reader.
 func (c *Context) Reader() *bufio.Reader {
 	return c.reader
 }
 
-// Writer current TELNET Client connection Writer.
+// Writer returns current TELNET Client connection Writer.
 func (c *Context) Writer() *bufio.Writer {
 	return c.writer
+}
+
+// Request returns current request body string.
+func (c *Context) Request() string {
+	return c.request
 }
