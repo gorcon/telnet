@@ -2,6 +2,7 @@ package telnet_test
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/gorcon/telnet"
 	"github.com/gorcon/telnet/telnettest"
-	"github.com/stretchr/testify/assert"
 )
 
 func authHandler(c *telnettest.Context) {
@@ -52,49 +52,46 @@ func TestDial(t *testing.T) {
 	defer server.Close()
 
 	t.Run("connection refused", func(t *testing.T) {
-		conn, err := telnet.Dial("127.0.0.2:12345", "password")
-		if !assert.Error(t, err) {
-			// Close connection if established.
-			assert.NoError(t, conn.Close())
-		}
+		wantErrContains := "connect: connection refused"
 
-		assert.EqualError(t, err, "dial tcp 127.0.0.2:12345: connect: connection refused")
+		_, err := telnet.Dial("127.0.0.2:12345", "password")
+		if err == nil || !strings.Contains(err.Error(), wantErrContains) {
+			t.Errorf("got err %q, want to contain %q", err, wantErrContains)
+		}
 	})
 
 	t.Run("incorrect password", func(t *testing.T) {
-		conn, err := telnet.Dial(server.Addr(), string(make([]byte, 1001)))
-		if !assert.Error(t, err) {
-			assert.NoError(t, conn.Close())
+		_, err := telnet.Dial(server.Addr(), string(make([]byte, 1001)))
+		if !errors.Is(err, telnet.ErrCommandTooLong) {
+			t.Errorf("got err %q, want %q", err, telnet.ErrCommandTooLong)
 		}
-
-		assert.EqualError(t, err, telnet.ErrCommandTooLong.Error())
 	})
 
 	t.Run("authentication failed", func(t *testing.T) {
-		conn, err := telnet.Dial(server.Addr(), "wrong")
-		if !assert.Error(t, err) {
-			assert.NoError(t, conn.Close())
+		_, err := telnet.Dial(server.Addr(), "wrong")
+		if !errors.Is(err, telnet.ErrAuthFailed) {
+			t.Errorf("got err %q, want %q", err, telnet.ErrAuthFailed)
 		}
-
-		assert.EqualError(t, err, telnet.ErrAuthFailed.Error())
 	})
 
 	t.Run("unexpected auth response", func(t *testing.T) {
-		conn, err := telnet.Dial(server.Addr(), "unexpect")
-		if !assert.Error(t, err) {
-			assert.NoError(t, conn.Close())
+		_, err := telnet.Dial(server.Addr(), "unexpect")
+		if !errors.Is(err, telnet.ErrAuthUnexpectedMessage) {
+			t.Errorf("got err %q, want %q", err, telnet.ErrAuthUnexpectedMessage)
 		}
-
-		assert.EqualError(t, err, telnet.ErrAuthUnexpectedMessage.Error())
 	})
 
 	t.Run("auth success", func(t *testing.T) {
 		conn, err := telnet.Dial(server.Addr(), "password", telnet.SetDialTimeout(5*time.Second))
-		if assert.NoError(t, err) {
-			assert.NoError(t, conn.Close())
+		if err != nil {
+			t.Errorf("got err %q, want %v", err, nil)
+			return
 		}
+		defer conn.Close()
 
-		assert.Equal(t, telnettest.AuthSuccessWelcomeMessage, conn.Status())
+		if conn.Status() != telnettest.AuthSuccessWelcomeMessage {
+			t.Fatalf("got result %q, want %q", conn.Status(), telnettest.AuthSuccessWelcomeMessage)
+		}
 	})
 }
 
@@ -108,80 +105,123 @@ func TestConn_Execute(t *testing.T) {
 
 	t.Run("incorrect command", func(t *testing.T) {
 		conn, err := telnet.Dial(server.Addr(), "password")
-		if !assert.NoError(t, err) {
-			return
+		if err != nil {
+			t.Fatalf("got err %q, want %v", err, nil)
 		}
-		defer assert.NoError(t, conn.Close())
+		defer conn.Close()
 
 		result, err := conn.Execute("")
-		assert.Equal(t, err, telnet.ErrCommandEmpty)
-		assert.Equal(t, 0, len(result))
+		if !errors.Is(err, telnet.ErrCommandEmpty) {
+			t.Errorf("got err %q, want %q", err, telnet.ErrCommandEmpty)
+		}
+
+		if len(result) != 0 {
+			t.Fatalf("got result len %d, want %d", len(result), 0)
+		}
 
 		result, err = conn.Execute(string(make([]byte, 1001)))
-		assert.Equal(t, err, telnet.ErrCommandTooLong)
-		assert.Equal(t, 0, len(result))
+		if !errors.Is(err, telnet.ErrCommandTooLong) {
+			t.Errorf("got err %q, want %q", err, telnet.ErrCommandTooLong)
+		}
+
+		if len(result) != 0 {
+			t.Fatalf("got result len %d, want %d", len(result), 0)
+		}
 	})
 
 	t.Run("closed network connection", func(t *testing.T) {
 		conn, err := telnet.Dial(server.Addr(), "password")
-		if !assert.NoError(t, err) {
-			return
+		if err != nil {
+			t.Fatalf("got err %q, want %v", err, nil)
 		}
-		assert.NoError(t, conn.Close())
+		conn.Close()
 
 		result, err := conn.Execute("help")
-		assert.EqualError(t, err, fmt.Sprintf("write tcp %s->%s: use of closed network connection", conn.LocalAddr(), conn.RemoteAddr()))
-		assert.Equal(t, 0, len(result))
+		wantErrMsg := fmt.Sprintf("write tcp %s->%s: use of closed network connection", conn.LocalAddr(), conn.RemoteAddr())
+		if err == nil || err.Error() != wantErrMsg {
+			t.Errorf("got err %q, want to contain %q", err, wantErrMsg)
+		}
+
+		if len(result) != 0 {
+			t.Fatalf("got result len %d, want %d", len(result), 0)
+		}
 	})
 
 	t.Run("unknown command", func(t *testing.T) {
 		conn, err := telnet.Dial(server.Addr(), "password")
-		if !assert.NoError(t, err) {
-			return
+		if err != nil {
+			t.Fatalf("got err %q, want %v", err, nil)
 		}
-		defer func() {
-			assert.NoError(t, conn.Close())
-		}()
+		defer conn.Close()
 
 		result, err := conn.Execute("random")
-		assert.NoError(t, err)
-		assert.Equal(t, "*** ERROR: unknown command 'random'", result)
+		if err != nil {
+			t.Fatalf("got err %q, want %v", err, nil)
+		}
+
+		resultWant := "*** ERROR: unknown command 'random'"
+		if result != resultWant {
+			t.Fatalf("got result %q, want %q", result, resultWant)
+		}
 	})
 
 	t.Run("success help command", func(t *testing.T) {
 		conn, err := telnet.Dial(server.Addr(), "password", telnet.SetClearResponse(true))
-		if !assert.NoError(t, err) {
-			return
+		if err != nil {
+			t.Fatalf("got err %q, want %v", err, nil)
 		}
-		defer func() {
-			assert.NoError(t, conn.Close())
-		}()
+		defer conn.Close()
 
 		result, err := conn.Execute("help")
-		assert.NoError(t, err)
-		assert.Equal(t, "lorem ipsum dolor sit amet", result)
+		if err != nil {
+			t.Fatalf("got err %q, want %v", err, nil)
+		}
+
+		resultWant := "lorem ipsum dolor sit amet"
+		if result != resultWant {
+			t.Fatalf("got result %q, want %q", result, resultWant)
+		}
 	})
 
 	t.Run("multiple commands", func(t *testing.T) {
 		conn, err := telnet.Dial(server.Addr(), "password", telnet.SetClearResponse(true))
-		if !assert.NoError(t, err) {
-			return
+		if err != nil {
+			t.Fatalf("got err %q, want %v", err, nil)
 		}
-		defer func() {
-			assert.NoError(t, conn.Close())
-		}()
+		defer conn.Close()
 
+		// Command 1
 		result, err := conn.Execute("help")
-		assert.NoError(t, err)
-		assert.Equal(t, "lorem ipsum dolor sit amet", result)
+		if err != nil {
+			t.Fatalf("got err %q, want %v", err, nil)
+		}
 
+		resultWant := "lorem ipsum dolor sit amet"
+		if result != resultWant {
+			t.Fatalf("got result %q, want %q", result, resultWant)
+		}
+
+		// Command 2
 		result, err = conn.Execute("random")
-		assert.NoError(t, err)
-		assert.Equal(t, "*** ERROR: unknown command 'random'", result)
+		if err != nil {
+			t.Fatalf("got err %q, want %v", err, nil)
+		}
 
+		resultWant = "*** ERROR: unknown command 'random'"
+		if result != resultWant {
+			t.Fatalf("got result %q, want %q", result, resultWant)
+		}
+
+		// Command 3
 		result, err = conn.Execute("help")
-		assert.NoError(t, err)
-		assert.Equal(t, "lorem ipsum dolor sit amet", result)
+		if err != nil {
+			t.Fatalf("got err %q, want %v", err, nil)
+		}
+
+		resultWant = "lorem ipsum dolor sit amet"
+		if result != resultWant {
+			t.Fatalf("got result %q, want %q", result, resultWant)
+		}
 	})
 
 	if run := getVar("TEST_7DTD_SERVER", "false"); run == "true" {
@@ -193,10 +233,9 @@ func TestConn_Execute(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() {
-				assert.NoError(t, conn.Close())
-			}()
+			defer conn.Close()
 
+			// Command 1
 			needle := func() string {
 				n := `*** Generic Console Help ***
 To get further help on a specific topic or command type (without the brackets)
@@ -333,19 +372,34 @@ of your current perk levels in a CSV file next to it.
 				return n
 			}()
 			result, err := conn.Execute("help")
-			assert.NoError(t, err)
-			assert.Equal(t, needle, result)
+			if err != nil {
+				t.Fatalf("got err %q, want %v", err, nil)
+			}
 
+			if result != needle {
+				t.Fatalf("got result %q, want %q", result, needle)
+			}
+
+			// Command 2
 			needle = "*** ERROR: unknown command 'status'"
 			result, err = conn.Execute("status")
-			assert.NoError(t, err)
-			assert.Equal(t, needle, result)
+			if err != nil {
+				t.Fatalf("got err %q, want %v", err, nil)
+			}
 
+			if result != needle {
+				t.Fatalf("got result %q, want %q", result, needle)
+			}
+
+			// Command 3
 			needle = "INF Chat (from '-non-player-', entity id '-1', to 'Global'): 'Server': 10"
 			result, err = conn.Execute("say 10")
-			assert.NoError(t, err)
+			if err != nil {
+				t.Fatalf("got err %q, want %v", err, nil)
+			}
+
 			if !strings.Contains(needle, needle) {
-				assert.Equal(t, needle, result)
+				t.Fatalf("got result %q, want to contain %q", result, needle)
 			}
 		})
 	}
@@ -360,10 +414,14 @@ func TestConn_Interactive(t *testing.T) {
 	defer server.Close()
 
 	t.Run("connection refused", func(t *testing.T) {
+		wantErrContains := "connect: connection refused"
+
 		r, w := bytes.Buffer{}, bytes.Buffer{}
 
 		err := telnet.DialInteractive(&r, &w, "127.0.0.2:12345", "password")
-		assert.EqualError(t, err, "dial tcp 127.0.0.2:12345: connect: connection refused")
+		if err == nil || !strings.Contains(err.Error(), wantErrContains) {
+			t.Errorf("got err %q, want to contain %q", err, wantErrContains)
+		}
 	})
 
 	t.Run("unknown command", func(t *testing.T) {
@@ -378,8 +436,13 @@ func TestConn_Interactive(t *testing.T) {
 		r.WriteString(telnet.ForcedExitCommand + "\n")
 
 		err := telnet.DialInteractive(&r, &w, server.Addr(), "password")
-		assert.NoError(t, err)
-		assert.Equal(t, needle, w.String())
+		if err != nil {
+			t.Fatalf("got err %q, want %v", err, nil)
+		}
+
+		if w.String() != needle {
+			t.Fatalf("got result %q, want %q", w.String(), needle)
+		}
 	})
 
 	t.Run("success help command", func(t *testing.T) {
@@ -397,9 +460,12 @@ func TestConn_Interactive(t *testing.T) {
 		r.WriteString(telnet.ForcedExitCommand + "\n")
 
 		err := telnet.DialInteractive(&r, &w, server.Addr(), "password", telnet.SetExitCommand("exit"))
-		assert.NoError(t, err)
+		if err != nil {
+			t.Fatalf("got err %q, want %v", err, nil)
+		}
+
 		if !strings.Contains(w.String(), "help") {
-			assert.Equal(t, needle, w.String())
+			t.Fatalf("got result %q, want to contain %q", w.String(), needle)
 		}
 	})
 }
