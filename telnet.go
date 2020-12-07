@@ -143,6 +143,10 @@ func DialInteractive(r io.Reader, w io.Writer, address string, password string, 
 
 // Execute sends command string to execute to the remote TELNET server.
 func (c *Conn) Execute(command string) (string, error) {
+	if command == "" {
+		return "", ErrCommandEmpty
+	}
+
 	response, err := c.execute(command)
 	if err != nil {
 		return response, err
@@ -185,9 +189,7 @@ func (c *Conn) Close() error {
 // auth authenticates client for the next requests.
 func (c *Conn) auth(password string) error {
 	var err error
-
-	c.status, err = c.execute(password)
-	if err != nil {
+	if c.status, err = c.execute(password); err != nil {
 		return err
 	}
 
@@ -208,10 +210,6 @@ func (c *Conn) auth(password string) error {
 
 // execute sends command string to execute to the remote TELNET server.
 func (c *Conn) execute(command string) (string, error) {
-	if command == "" {
-		return "", ErrCommandEmpty
-	}
-
 	if len(command) > MaxCommandLen {
 		return "", ErrCommandTooLong
 	}

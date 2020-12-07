@@ -61,13 +61,13 @@ func TestDial(t *testing.T) {
 		assert.EqualError(t, err, "dial tcp 127.0.0.2:12345: connect: connection refused")
 	})
 
-	t.Run("empty password", func(t *testing.T) {
-		conn, err := telnet.Dial(server.Addr(), "")
+	t.Run("incorrect password", func(t *testing.T) {
+		conn, err := telnet.Dial(server.Addr(), string(make([]byte, 1001)))
 		if !assert.Error(t, err) {
 			assert.NoError(t, conn.Close())
 		}
 
-		assert.EqualError(t, err, telnet.ErrCommandEmpty.Error())
+		assert.EqualError(t, err, telnet.ErrCommandTooLong.Error())
 	})
 
 	t.Run("authentication failed", func(t *testing.T) {

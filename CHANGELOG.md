@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 **ATTN**: This project uses [semantic versioning](http://semver.org/).
 
 ## [Unreleased]
+### Added
+- Added telnettest Server for mocking TELNET connections.
 
 ## [v1.1.0] - 2020-11-16
 ### Added

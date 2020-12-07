@@ -1,5 +1,4 @@
 // Package telnettest contains TELNET server for TELNET client testing.
-// WIP: telnettest is not finally implemented. DO NOT USE IN PRODUCTION!
 package telnettest
 
 import (
@@ -221,8 +220,11 @@ func (s *Server) handle(conn net.Conn) {
 			break
 		}
 
-		ctx.request = scanner.Text()
+		if s.Settings.CommandResponseDelay != 0 {
+			time.Sleep(s.Settings.CommandResponseDelay)
+		}
 
+		ctx.request = scanner.Text()
 		s.commandHandler(ctx)
 	}
 }
@@ -261,6 +263,10 @@ func (s *Server) auth(ctx *Context) bool {
 		p := make([]byte, len([]byte(ctx.server.Settings.Password)))
 		_, _ = ctx.reader.Read(p)
 		ctx.request = string(p)
+
+		if s.Settings.AuthResponseDelay != 0 {
+			time.Sleep(s.Settings.AuthResponseDelay)
+		}
 
 		s.authHandler(ctx)
 
