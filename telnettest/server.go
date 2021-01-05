@@ -211,7 +211,7 @@ func (s *Server) handle(conn net.Conn) {
 		scanned := scanner.Scan()
 		if !scanned {
 			if err := scanner.Err(); err != nil {
-				if errors.Is(err, io.EOF) {
+				if !errors.Is(err, io.EOF) {
 					panic(fmt.Errorf("handle read request error: %w", err))
 				}
 
