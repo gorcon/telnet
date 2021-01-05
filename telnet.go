@@ -92,7 +92,7 @@ func Dial(address string, password string, options ...Option) (*Conn, error) {
 	conn, err := net.DialTimeout("tcp", address, settings.dialTimeout)
 	if err != nil {
 		// Failed to open TCP conn to the server.
-		return nil, err
+		return nil, fmt.Errorf("telnet: %w", err)
 	}
 
 	client := Conn{conn: conn, settings: settings, reader: conn, writer: conn, buffer: new(bytes.Buffer)}
@@ -102,6 +102,7 @@ func Dial(address string, password string, options ...Option) (*Conn, error) {
 	if err := client.auth(password); err != nil {
 		// Failed to auth conn with the server.
 		if err2 := client.Close(); err2 != nil {
+			//nolint:errorlint // TODO: Come up with the better wrapping
 			return &client, fmt.Errorf("%w: %v. Previous error: %v", ErrMultiErrorOccurred, err2, err)
 		}
 
@@ -124,7 +125,7 @@ func DialInteractive(r io.Reader, w io.Writer, address string, password string, 
 	conn, err := net.DialTimeout("tcp", address, settings.dialTimeout)
 	if err != nil {
 		// Failed to open TCP conn to the server.
-		return err
+		return fmt.Errorf("telnet: %w", err)
 	}
 
 	client := Conn{conn: conn, settings: settings, reader: conn, writer: conn}
