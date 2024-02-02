@@ -268,17 +268,17 @@ func (c *Conn) read(p []byte) (n int, err error) {
 // processReadResponse reads response data from TELNET connection
 // and writes them to writer (Stdout).
 func (c *Conn) processReadResponse(writer io.Writer) {
-	p := make([]byte, 1)
+	packet := make([]byte, 1)
 
 	for {
 		// Read 1 byte.
-		n, err := c.read(p)
+		n, err := c.read(packet)
 		if n <= 0 && err == nil {
 			continue
 		} else if n <= 0 && err != nil {
 			break
 		}
 
-		_, _ = writer.Write(p)
+		_, _ = writer.Write(packet)
 	}
 }

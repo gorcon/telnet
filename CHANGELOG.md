@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v1.2.3] - 2024-02-03
+### Updated
+- Updated Golang to 1.21.6 version.
+- Updated golangci linter to 1.55.2 version.
+
 ## [v1.2.2] - 2021-01-06
 ### Fixed
 - Fixed telnettest panic "handle read request error"
@@ -46,7 +51,8 @@ job was joined with tests workflow.
 ### Added
 - Initial implementation.
 
-[Unreleased]: https://github.com/gorcon/telnet/compare/v1.2.2...HEAD
+[Unreleased]: https://github.com/gorcon/telnet/compare/v1.2.3...HEAD
+[v1.2.3]: https://github.com/gorcon/telnet/compare/v1.2.2...v1.2.3
 [v1.2.2]: https://github.com/gorcon/telnet/compare/v1.2.1...v1.2.2
 [v1.2.1]: https://github.com/gorcon/telnet/compare/v1.2.0...v1.2.1
 [v1.2.0]: https://github.com/gorcon/telnet/compare/v1.1.0...v1.2.0

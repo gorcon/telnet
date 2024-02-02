@@ -1,3 +1,3 @@
 module github.com/gorcon/telnet
 
-go 1.15
+go 1.21
